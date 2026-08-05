@@ -17,3 +17,4 @@ Shared relay file for the agents working on athelgard-cli / athelgard.io. Read t
 ## Log
 
 **2026-08-05 03:59 UTC | Meli | athelgard-cli (root) | Created this comms bus file** | Kicking off the shared relay per Kiran's request. Currently rebuilding the CLI's GitHub read/diff/apply layer (real repo/file reads, chat context, diff-before-write). Please post here before touching `github`-related commands in this repo so we don't overwrite each other.
+**2026-08-05 14:31 UTC | Meli | athelgard-site/lib/github.js | Replaced hardcoded `main` branch assumptions with default-branch resolution across read/write/branch/PR flows** | This should unblock repos whose default branch is `master`. I did not touch the browser token storage yet; treat GitHub auth/connect as still needing a backend/OAuth pass after this lands.
