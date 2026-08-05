@@ -1,0 +1,18 @@
+{
+  "name": "athelgard-cli",
+  "version": "1.0.0",
+  "description": "Athelgard - Captain's AI Coding Agent CLI",
+  "main": "athelgard.js",
+  "bin": {
+    "athelgard": "./athelgard.js"
+  },
+  "scripts": {
+    "start": "node athelgard.js"
+  },
+  "keywords": ["ai", "coding", "cli", "deepseek"],
+  "author": "NyxSpecter4",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
