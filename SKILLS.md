@@ -90,6 +90,25 @@ athelgard vercel env-add <project> <key> <value>  # Add env var
 athelgard vercel domains <project>    # List domains
 ```
 
+## 📊 BASELINE PRO — Site Health Monitor
+
+```bash
+node baseline-pro.js check <url> [name]     # Deep check one site
+node baseline-pro.js run                     # Full report + Discord summary
+node baseline-pro.js barometer               # Quick fleet status
+node baseline-pro.js report                  # Regenerate HTML from history
+node baseline-pro.js history [site]          # Show history
+```
+
+**Discord Alerts:** Set `DISCORD_WEBHOOK` env var:
+```bash
+export DISCORD_WEBHOOK="https://discord.com/api/webhooks/..."
+node baseline-pro.js run
+```
+
+**Tracks (15+ metrics):** Speed, SEO, Security, Performance, Uptime
+**Reports:** HTML dashboard with radar/line/bar charts, Discord embeds, 100-run history
+
 ## REQUIREMENTS
 
 - Node.js 18+
