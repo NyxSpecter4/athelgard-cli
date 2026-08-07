@@ -18,6 +18,7 @@ const os = require('os');
 const https = require('https');
 const readline = require('readline');
 const promptEngineer = require('./prompt-engineer');
+const DeepSeekKPI = require('./skills/deepseek-kpi');
 const GitIntel = require('./skills/git-intel');
 const Navigator = require('./skills/navigator');
 const CodeChunker = require('./skills/chunker');
@@ -857,6 +858,129 @@ async function vercelCommand(args) {
   }
 }
 
+// ===== DEEPSEEK KPI COMMANDS =====
+
+async function kpiCommand(args) {
+  const [subcmd, ...rest] = args;
+  const kpi = new DeepSeekKPI();
+
+  switch(subcmd) {
+    case 'dashboard': {
+      const days = parseInt(rest[0]) || 7;
+      const dash = kpi.getDashboard(days);
+      
+      console.log(`\n📊 DEEPSEEK KPI DASHBOARD (${dash.period})\n`);
+      console.log(`   Health Score: ${dash.healthScore}/100`);
+      console.log(`   Total Calls: ${DeepSeekKPI.formatNumber(dash.totalCalls)}`);
+      console.log(`   Total Cost: ${DeepSeekKPI.formatCurrency(dash.totalCost)}`);
+      console.log(`   Total Tokens: ${DeepSeekKPI.formatNumber(dash.totalTokens)}`);
+      console.log(`   Avg Latency: ${DeepSeekKPI.msToSeconds(dash.avgLatency)}`);
+      console.log(`   Success Rate: ${dash.successRate}%`);
+      console.log(`   Error Rate: ${dash.errorRate}%`);
+      console.log(`   Trend: ${dash.trend}`);
+      console.log(`\n   Model Split:`);
+      for (const [model, count] of Object.entries(dash.modelSplit)) {
+        console.log(`      ${model}: ${count}`);
+      }
+      break;
+    }
+
+    case 'calls': {
+      const n = parseInt(rest[0]) || 10;
+      console.log(`\n📞 LAST ${n} CALLS:\n`);
+      for (const call of kpi.data.calls.slice(-n).reverse()) {
+        const icon = call.status === 'success' ? '✅' : '❌';
+        const cost = DeepSeekKPI.formatCurrency(call.cost);
+        console.log(`   ${icon} ${call.timestamp.split('T')[1].slice(0,8)} | ${call.model} | ${call.tokens} tokens | ${cost} | ${DeepSeekKPI.msToSeconds(call.latency)}`);
+      }
+      break;
+    }
+
+    case 'simulate': {
+      const count = parseInt(rest[0]) || 5;
+      console.log(`\n🎲 SIMULATING ${count} CALLS...\n`);
+      for (let i = 0; i < count; i++) {
+        const call = kpi.simulateCall();
+        console.log(`   ${call.status === 'success' ? '✅' : '❌'} ${call.model} | ${call.tokens} tokens | ${DeepSeekKPI.formatCurrency(call.cost)}`);
+      }
+      console.log(`\n   Total simulated cost: ${DeepSeekKPI.formatCurrency(kpi.data.totalCost)}`);
+      break;
+    }
+
+    case 'phone': {
+      console.log('\n📱 FETCHING PHONE CALLS FROM SUPABASE...\n');
+      const calls = await kpi.fetchFromSupabase();
+      
+      if (!calls || calls.length === 0) {
+        console.log('   No phone call data found. Make sure SUPABASE_URL and SUPABASE_ANON_KEY are set.');
+        console.log('   Run: athelgard config');
+        return;
+      }
+      
+      const analysis = kpi.analyzePhoneCalls(calls);
+      console.log(`   Total Calls: ${analysis.totalCalls}`);
+      console.log(`   Total Tokens: ${DeepSeekKPI.formatNumber(analysis.totalTokens)}`);
+      console.log(`   Total Cost: ${DeepSeekKPI.formatCurrency(analysis.totalCost)}`);
+      console.log(`   Top Intent: ${analysis.topIntent}`);
+      console.log(`   Peak Hour: ${analysis.peakHour}:00`);
+      console.log(`\n   Intents:`);
+      for (const [intent, count] of Object.entries(analysis.intents)) {
+        console.log(`      ${intent}: ${count}`);
+      }
+      
+      // Generate prompt improvements
+      const improvements = kpi.generatePromptImprovements(analysis);
+      if (improvements.length > 0) {
+        console.log(`\n💡 PROMPT IMPROVEMENTS FROM PHONE CALLS:`);
+        for (const imp of improvements) {
+          console.log(`\n   [${imp.area}]`);
+          console.log(`   Insight: ${imp.insight}`);
+          console.log(`   Action: ${imp.action}`);
+        }
+      }
+      break;
+    }
+
+    case 'report': {
+      const days = parseInt(rest[0]) || 7;
+      const dash = kpi.getDashboard(days);
+      
+      console.log(`\n📈 DEEPSEEK KPI REPORT (${dash.period})\n`);
+      console.log(`Health Score: ${dash.healthScore}/100`);
+      console.log(`Success Rate: ${dash.successRate}%`);
+      console.log(`Avg Latency: ${DeepSeekKPI.msToSeconds(dash.avgLatency)}`);
+      console.log(`Total Cost: ${DeepSeekKPI.formatCurrency(dash.totalCost)}`);
+      console.log(`Trend: ${dash.trend}`);
+      
+      if (dash.daily.length > 0) {
+        console.log(`\nDaily Breakdown:`);
+        for (const day of dash.daily) {
+          const avgLat = day.latency.length > 0 
+            ? Math.round(day.latency.reduce((a,b) => a+b, 0) / day.latency.length)
+            : 0;
+          console.log(`   ${day.date}: ${day.calls} calls, ${day.tokens} tokens, ${DeepSeekKPI.formatCurrency(day.cost)}, avg ${DeepSeekKPI.msToSeconds(avgLat)}`);
+        }
+      }
+      break;
+    }
+
+    default:
+      console.log(`
+📊 DEEPSEEK KPI — Track API usage, costs, and learn from phone calls
+
+  athelgard kpi dashboard [days]     - Show health dashboard
+  athelgard kpi calls [n]            - Show last N calls
+  athelgard kpi simulate [n]         - Simulate N calls (test mode)
+  athelgard kpi phone                - Analyze phone calls from Supabase
+  athelgard kpi report [days]        - Generate detailed report
+
+Environment:
+  SUPABASE_URL=your-project.supabase.co
+  SUPABASE_ANON_KEY=your-key
+`);
+  }
+}
+
 function help() {
   console.log(`
 🐉 ATHELGARD CLI - Captain's AI Coding Agent + Prompt Engineer + Skills
@@ -924,6 +1048,13 @@ function help() {
   athelgard vercel env <project>
   athelgard vercel env-add <project> <key> <value>
   athelgard vercel domains <project>
+
+📊 DEEPSEEK KPI:
+  athelgard kpi dashboard [days]     - API health dashboard
+  athelgard kpi calls [n]            - Last N calls
+  athelgard kpi simulate [n]         - Simulate calls
+  athelgard kpi phone                - Analyze phone calls from Supabase
+  athelgard kpi report [days]        - Detailed report
 `);
 }
 
@@ -968,6 +1099,9 @@ async function main() {
 
   // ===== VERCEL =====
   if (command === 'vercel') return vercelCommand(args);
+
+  // ===== DEEPSEEK KPI =====
+  if (command === 'kpi') return kpiCommand(args);
 
   return console.log(`\n🐉 ${await askAI([command, ...args].join(' '))}`);
 }
