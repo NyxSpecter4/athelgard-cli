@@ -23,6 +23,7 @@ const Navigator = require('./skills/navigator');
 const CodeChunker = require('./skills/chunker');
 const TestGenerator = require('./skills/test-gen');
 const DocGenerator = require('./skills/doc-gen');
+const VercelManager = require('./skills/vercel');
 
 const CONFIG_PATH = path.join(os.homedir(), '.athelgard.json');
 const MAX_CONTEXT = 12000;
@@ -61,6 +62,7 @@ async function configure() {
   config.deepseekKey = await prompt('DeepSeek API key (Enter keeps existing): ') || config.deepseekKey;
   config.kimiKey = await prompt('Kimi API key (optional; Enter keeps existing): ') || config.kimiKey;
   config.githubToken = await prompt('GitHub token (optional; Enter keeps existing): ') || config.githubToken;
+  config.vercelToken = await prompt('Vercel token (optional; Enter keeps existing): ') || config.vercelToken;
   saveConfig(config);
 }
 function provider(config) {
@@ -754,6 +756,107 @@ async function docsCommand(args) {
   }
 }
 
+// ===== VERCEL COMMANDS =====
+
+async function vercelCommand(args) {
+  const [subcmd, ...rest] = args;
+  const config = loadConfig();
+  
+  if (!config.vercelToken) {
+    console.log('❌ No Vercel token configured. Run: athelgard config');
+    console.log('   Get your token from: https://vercel.com/account/tokens');
+    return;
+  }
+  
+  const vc = new VercelManager(config.vercelToken);
+  
+  switch(subcmd) {
+    case 'projects': {
+      console.log('\n🚀 VERCEL PROJECTS:\n');
+      const projects = await vc.listProjects();
+      for (const p of projects.slice(0, 20)) {
+        const framework = p.framework || 'static';
+        console.log(`   ${p.name.padEnd(25)} ${framework.padEnd(12)} ${p.link?.type || ''}`);
+      }
+      if (projects.length > 20) console.log(`   ... and ${projects.length - 20} more`);
+      break;
+    }
+    
+    case 'deploys': {
+      const [projectId] = rest;
+      if (!projectId) { console.log('Usage: athelgard vercel deploys <project-id>'); return; }
+      console.log(`\n🚀 DEPLOYMENTS: ${projectId}\n`);
+      const deploys = await vc.listDeployments(projectId, 10);
+      for (const d of deploys) {
+        const icon = VercelManager.statusIcon(d.readyState);
+        console.log(`   ${icon} ${d.url?.padEnd(35)} ${d.readyState.padEnd(12)} ${VercelManager.formatDate(d.created)}`);
+      }
+      break;
+    }
+    
+    case 'status': {
+      const [deployId] = rest;
+      if (!deployId) { console.log('Usage: athelgard vercel status <deployment-id>'); return; }
+      const status = await vc.getDeploymentStatus(deployId);
+      console.log(`\n📊 DEPLOYMENT STATUS:\n`);
+      console.log(`   ID: ${status.id}`);
+      console.log(`   URL: https://${status.url}`);
+      console.log(`   State: ${VercelManager.statusIcon(status.state)} ${status.state}`);
+      console.log(`   Creator: ${status.creator}`);
+      console.log(`   Created: ${VercelManager.formatDate(status.created)}`);
+      if (status.inspectorUrl) console.log(`   Inspector: ${status.inspectorUrl}`);
+      break;
+    }
+    
+    case 'env': {
+      const [projectId] = rest;
+      if (!projectId) { console.log('Usage: athelgard vercel env <project-id>'); return; }
+      console.log(`\n🔐 ENV VARS: ${projectId}\n`);
+      const envs = await vc.getEnvVars(projectId);
+      for (const e of envs) {
+        const targets = (e.target || []).join(',');
+        console.log(`   ${e.key.padEnd(25)} ${targets.padEnd(15)} ${e.type || 'plain'}`);
+      }
+      break;
+    }
+    
+    case 'env-add': {
+      const [projectId, key, value] = rest;
+      if (!projectId || !key || !value) {
+        console.log('Usage: athelgard vercel env-add <project> <key> <value>');
+        return;
+      }
+      await vc.addEnvVar(projectId, key, value);
+      console.log(`✅ Added env var: ${key}`);
+      break;
+    }
+    
+    case 'domains': {
+      const [projectId] = rest;
+      if (!projectId) { console.log('Usage: athelgard vercel domains <project-id>'); return; }
+      console.log(`\n🌐 DOMAINS: ${projectId}\n`);
+      const domains = await vc.getDomains(projectId);
+      for (const d of domains) {
+        const icon = d.verified ? '✅' : '❓';
+        console.log(`   ${icon} ${d.name}`);
+      }
+      break;
+    }
+    
+    default:
+      console.log(`
+🚀 VERCEL MANAGER
+
+  athelgard vercel projects             - List all projects
+  athelgard vercel deploys <project>    - List deployments
+  athelgard vercel status <deploy-id>   - Check deployment status
+  athelgard vercel env <project>        - List env vars
+  athelgard vercel env-add <project> <key> <value>  - Add env var
+  athelgard vercel domains <project>    - List domains
+`);
+  }
+}
+
 function help() {
   console.log(`
 🐉 ATHELGARD CLI - Captain's AI Coding Agent + Prompt Engineer + Skills
@@ -813,6 +916,14 @@ function help() {
   athelgard docs api <file>
   athelgard docs changelog
   athelgard docs license [type]
+
+🚀 VERCEL:
+  athelgard vercel projects
+  athelgard vercel deploys <project>
+  athelgard vercel status <deploy-id>
+  athelgard vercel env <project>
+  athelgard vercel env-add <project> <key> <value>
+  athelgard vercel domains <project>
 `);
 }
 
@@ -854,6 +965,9 @@ async function main() {
 
   // ===== DOC GENERATOR =====
   if (command === 'docs') return docsCommand(args);
+
+  // ===== VERCEL =====
+  if (command === 'vercel') return vercelCommand(args);
 
   return console.log(`\n🐉 ${await askAI([command, ...args].join(' '))}`);
 }
