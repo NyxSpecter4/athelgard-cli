@@ -1055,6 +1055,9 @@ function help() {
   athelgard api simulate [n]         - Simulate calls
   athelgard api phone                - Analyze phone calls from Supabase
   athelgard api report [days]        - Detailed report
+
+🌡️ STATUS:
+  athelgard status                   - Unified dashboard (sites + API + system)
 `);
 }
 
@@ -1102,6 +1105,11 @@ async function main() {
 
   // ===== DEEPSEEK API =====
   if (command === 'api') return apiCommand(args);
+
+  // ===== STATUS =====
+  if (command === 'status') {
+    return require('child_process').execSync('node status.js', { cwd: __dirname, stdio: 'inherit' });
+  }
 
   return console.log(`\n🐉 ${await askAI([command, ...args].join(' '))}`);
 }
