@@ -79,11 +79,23 @@ cd athelgard-cli
 npm link  # or: node athelgard.js config
 ```
 
+## 🚀 VERCEL MANAGER
+
+```bash
+athelgard vercel projects             # List all projects
+athelgard vercel deploys <project>    # List deployments
+athelgard vercel status <deploy-id>   # Check deployment status
+athelgard vercel env <project>        # List env vars
+athelgard vercel env-add <project> <key> <value>  # Add env var
+athelgard vercel domains <project>    # List domains
+```
+
 ## REQUIREMENTS
 
 - Node.js 18+
 - DeepSeek API key (or Kimi as fallback)
 - Git (for Git Intelligence)
+- Vercel token (optional, for Vercel commands)
 
 ---
 
