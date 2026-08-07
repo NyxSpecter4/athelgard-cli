@@ -18,6 +18,11 @@ const os = require('os');
 const https = require('https');
 const readline = require('readline');
 const promptEngineer = require('./prompt-engineer');
+const GitIntel = require('./skills/git-intel');
+const Navigator = require('./skills/navigator');
+const CodeChunker = require('./skills/chunker');
+const TestGenerator = require('./skills/test-gen');
+const DocGenerator = require('./skills/doc-gen');
 
 const CONFIG_PATH = path.join(os.homedir(), '.athelgard.json');
 const MAX_CONTEXT = 12000;
@@ -349,28 +354,465 @@ Built-in templates:
   }
 }
 
+// ===== GIT INTELLIGENCE COMMANDS =====
+
+async function gitCommand(args) {
+  const [subcmd, ...rest] = args;
+  const git = new GitIntel();
+  
+  if (!git.isGitRepo()) {
+    console.log('❌ Not a git repository');
+    return;
+  }
+
+  switch(subcmd) {
+    case 'blame': {
+      const [file, line] = rest;
+      if (!file) { console.log('Usage: athelgard git blame <file> [line]'); return; }
+      const result = git.blame(file, line ? parseInt(line) : null);
+      if (!result) { console.log('❌ Could not get blame info'); return; }
+      console.log(`\n🕵️ BLAME: ${file}${line ? `:${line}` : ''}`);
+      console.log(`   Commit: ${result.commit}`);
+      console.log(`   Author: ${result.author}`);
+      console.log(`   Date: ${result.date}`);
+      console.log(`   Message: ${result.message}`);
+      break;
+    }
+    
+    case 'log': {
+      const n = parseInt(rest[0]) || 20;
+      const commits = git.log({ n });
+      console.log(`\n📜 LAST ${commits.length} COMMITS:\n`);
+      for (const c of commits) {
+        console.log(`   ${c.hash}  ${c.date}  ${c.author.padEnd(15)}  ${c.subject}`);
+      }
+      break;
+    }
+    
+    case 'status': {
+      const status = git.status();
+      if (!status.length) { console.log('✅ Working tree clean'); return; }
+      console.log('\n📋 WORKING TREE:\n');
+      for (const s of status) {
+        const icon = s.status === '??' ? '❓' : s.staged ? '✅' : '✏️';
+        console.log(`   ${icon} [${s.status.padEnd(2)}] ${s.file}`);
+      }
+      break;
+    }
+    
+    case 'diff': {
+      const base = rest[0] || 'HEAD~1';
+      const target = rest[1] || 'HEAD';
+      const changes = git.changedFiles(base, target);
+      console.log(`\n📊 CHANGES: ${base} → ${target}\n`);
+      for (const c of changes) {
+        const icon = c.status === 'A' ? '➕' : c.status === 'D' ? '➖' : c.status === 'M' ? '✏️' : '📝';
+        console.log(`   ${icon} ${c.statusLabel.padEnd(10)} ${c.file}`);
+      }
+      break;
+    }
+    
+    case 'summary': {
+      const days = parseInt(rest[0]) || 7;
+      const summary = git.summary(days);
+      console.log(`\n📈 ACTIVITY: Last ${summary.period}\n`);
+      console.log(`   Total commits: ${summary.totalCommits}`);
+      console.log(`\n   Top contributors:`);
+      for (const [name, count] of summary.topAuthors) {
+        console.log(`      ${name}: ${count} commits`);
+      }
+      console.log(`\n   Recent commits:`);
+      for (const c of summary.recentCommits) {
+        console.log(`      ${c.hash} ${c.subject}`);
+      }
+      break;
+    }
+    
+    case 'suggest-commit': {
+      console.log('\n🤖 Analyzing staged changes...');
+      const result = await git.suggestCommitMessage((prompt) => askAI(prompt));
+      if (result.error) { console.log(`❌ ${result.error}`); return; }
+      console.log('\n💡 SUGGESTED COMMIT MESSAGE:\n');
+      console.log('─'.repeat(50));
+      console.log(result.message);
+      console.log('─'.repeat(50));
+      console.log(`\n   Files: ${result.files.length}`);
+      console.log(`   Use: git commit -m "${result.message.split('\n')[0]}"`);
+      break;
+    }
+    
+    case 'branches': {
+      const branches = git.branches();
+      console.log('\n🌿 BRANCHES:\n');
+      for (const b of branches) {
+        const marker = b.current ? '👉 ' : '   ';
+        console.log(`${marker}${b.name.padEnd(20)} ${b.upstream || '(no upstream)'}`);
+      }
+      break;
+    }
+    
+    case 'stash': {
+      const stashes = git.stashList();
+      if (!stashes.length) { console.log('📦 No stashes'); return; }
+      console.log('\n📦 STASHES:\n');
+      for (const s of stashes) {
+        console.log(`   ${s.ref}  ${s.age} ago  ${s.subject}`);
+      }
+      break;
+    }
+    
+    case 'contributors': {
+      const contributors = git.contributors();
+      console.log('\n👥 TOP CONTRIBUTORS:\n');
+      for (const c of contributors.slice(0, 10)) {
+        const bar = '█'.repeat(Math.min(c.commits / 5, 20));
+        console.log(`   ${c.name.padEnd(20)} ${bar} ${c.commits}`);
+      }
+      break;
+    }
+    
+    case 'stats': {
+      const stats = git.stats();
+      console.log('\n📊 REPO STATISTICS:\n');
+      console.log(`   Total commits: ${stats.totalCommits}`);
+      console.log(`   Total files: ${stats.totalFiles}`);
+      console.log(`   Active days: ${stats.activeDays}`);
+      console.log(`   First commit: ${stats.firstCommit}`);
+      console.log(`   Last commit: ${stats.lastCommit}`);
+      break;
+    }
+    
+    default:
+      console.log(`
+🕵️ GIT INTELLIGENCE
+
+  athelgard git blame <file> [line]    - Who wrote this
+  athelgard git log [n]                - Recent commits
+  athelgard git status                 - Working tree
+  athelgard git diff [base] [target]   - Changed files
+  athelgard git summary [days]         - Activity summary
+  athelgard git suggest-commit         - Auto-generate commit message
+  athelgard git branches               - List branches
+  athelgard git stash                  - List stashes
+  athelgard git contributors           - Top contributors
+  athelgard git stats                  - Repo statistics
+`);
+  }
+}
+
+// ===== NAVIGATOR COMMANDS =====
+
+function mapCommand(args) {
+  const [dir = '.'] = args;
+  const nav = new Navigator();
+  const map = nav.map(dir, 0, 3);
+  
+  console.log(`\n🗺️ PROJECT MAP: ${dir}\n`);
+  console.log(`   Files: ${map.totalFiles} | Size: ${nav._formatSize(map.totalSize)}\n`);
+  
+  const byDepth = {};
+  for (const d of map.dirs) {
+    if (!byDepth[d.depth]) byDepth[d.depth] = [];
+    byDepth[d.depth].push(d.path);
+  }
+  
+  for (let d = 0; d <= 3; d++) {
+    if (byDepth[d]) {
+      console.log(`   ${'  '.repeat(d)}📁 ${byDepth[d].length} directories`);
+    }
+  }
+  
+  const exts = {};
+  for (const f of map.files) {
+    exts[f.ext || '(no ext)'] = (exts[f.ext || '(no ext)'] || 0) + 1;
+  }
+  const sortedExts = Object.entries(exts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  console.log(`\n   Top file types:`);
+  for (const [ext, count] of sortedExts) {
+    console.log(`      ${ext.padEnd(8)} ${count} files`);
+  }
+}
+
+function treeCommand(args) {
+  const [dir = '.'] = args;
+  const nav = new Navigator();
+  console.log(`\n${dir}`);
+  console.log(nav.tree(dir, '', 4));
+}
+
+function statsCommand() {
+  const nav = new Navigator();
+  const stats = nav.stats();
+  
+  console.log('\n📊 PROJECT STATISTICS:\n');
+  console.log(`   Total files: ${stats.totalFiles}`);
+  console.log(`   Total size: ${stats.totalSize}`);
+  console.log(`   Total lines: ${stats.totalLines.toLocaleString()}`);
+  console.log(`   Directories: ${stats.directories}\n`);
+  console.log(`   By extension:`);
+  for (const [ext, count] of stats.byExtension) {
+    console.log(`      ${(ext || 'none').padEnd(8)} ${String(count).padStart(4)} files`);
+  }
+}
+
+function findCommand(args) {
+  const [pattern] = args;
+  if (!pattern) { console.log('Usage: athelgard find <pattern>'); return; }
+  const nav = new Navigator();
+  const results = nav.find(pattern);
+  console.log(`\n🔍 FOUND ${results.length} FILES:\n`);
+  for (const r of results.slice(0, 30)) {
+    console.log(`   ${r.path}`);
+  }
+  if (results.length > 30) console.log(`   ... and ${results.length - 30} more`);
+}
+
+function grepCommand(args) {
+  const [term, ext] = args;
+  if (!term) { console.log('Usage: athelgard grep <term> [ext]'); return; }
+  const nav = new Navigator();
+  const results = nav.grep(term, '.', ext);
+  
+  console.log(`\n🔍 "${term}" FOUND IN ${results.length} FILES:\n`);
+  for (const r of results.slice(0, 10)) {
+    console.log(`   📄 ${r.file} (${r.totalMatches} matches)`);
+    for (const m of r.matches) {
+      console.log(`      ${String(m.line).padStart(4)}: ${m.text.substring(0, 80)}`);
+    }
+  }
+}
+
+function detectCommand() {
+  const nav = new Navigator();
+  const project = nav.detectProject();
+  
+  console.log('\n🔎 PROJECT DETECTION:\n');
+  console.log(`   Type: ${project.name}`);
+  if (project.framework) console.log(`   Framework: ${project.framework}`);
+  if (project.version) console.log(`   Version: ${project.version}`);
+  if (project.main) console.log(`   Entry: ${project.main}`);
+  if (project.scripts?.length) {
+    console.log(`   Scripts: ${project.scripts.join(', ')}`);
+  }
+}
+
+// ===== CODE CHUNKER COMMANDS =====
+
+function chunkCommand(args) {
+  const [file, targetFunc] = args;
+  if (!file) { console.log('Usage: athelgard chunk <file> [function-name]'); return; }
+  
+  const code = fs.readFileSync(file, 'utf8');
+  const chunker = new CodeChunker();
+  const language = chunker.detectLanguage(file);
+  const chunks = chunker.chunkByFunction(code, language);
+  
+  if (targetFunc) {
+    const target = chunks.find(c => c.name === targetFunc);
+    if (!target) { console.log(`❌ Function "${targetFunc}" not found`); return; }
+    console.log(`\n🧩 CHUNK: ${target.type} "${target.name}" (${target.content.length} lines)\n`);
+    console.log(target.content.join('\n'));
+  } else {
+    console.log(`\n🧩 ${file} → ${chunks.length} chunks (${language}):\n`);
+    for (const c of chunks) {
+      if (c.type === 'separator') continue;
+      const icon = c.type === 'class' ? '🏛️' : c.type === 'function' ? '⚙️' : '📝';
+      console.log(`   ${icon} ${c.type.toUpperCase()} "${c.name}" (${c.content.length} lines)`);
+    }
+  }
+}
+
+function contextCommand(args) {
+  const [file, lineStr] = args;
+  if (!file || !lineStr) { console.log('Usage: athelgard context <file> <line>'); return; }
+  
+  const code = fs.readFileSync(file, 'utf8');
+  const chunker = new CodeChunker();
+  const language = chunker.detectLanguage(file);
+  const context = chunker.getContext(code, parseInt(lineStr), 20, language);
+  
+  console.log(`\n📍 CONTEXT: ${file}:${lineStr}\n`);
+  if (context.enclosingFunction) {
+    console.log(`   Enclosing ${context.enclosingFunction.type}: ${context.enclosingFunction.name}\n`);
+  }
+  console.log('─'.repeat(60));
+  const lines = context.around.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const lineNum = context.lineNumbers.start + i;
+    const marker = lineNum === context.lineNumbers.target ? '▶️' : '  ';
+    console.log(`${marker} ${String(lineNum).padStart(4)}: ${lines[i]}`);
+  }
+  console.log('─'.repeat(60));
+}
+
+// ===== TEST GENERATOR COMMANDS =====
+
+async function testGenCommand(args) {
+  const [file, ...rest] = args;
+  const gen = new TestGenerator();
+  
+  if (file === '--coverage') {
+    const result = gen.findUntestedFiles();
+    console.log(`\n🧪 COVERAGE ANALYSIS:\n`);
+    console.log(`   Tested: ${result.tested} | Total: ${result.total} | Coverage: ${result.coverage}%\n`);
+    console.log(`   ❌ UNTESTED FILES (${result.untested.length}):`);
+    for (const f of result.untested.slice(0, 20)) {
+      console.log(`      ${f}`);
+    }
+    if (result.untested.length > 20) console.log(`      ... and ${result.untested.length - 20} more`);
+    return;
+  }
+  
+  if (!file) { console.log('Usage: athelgard test-gen <file> [--framework vitest]'); return; }
+  
+  const frameworkFlag = rest.find(r => r.startsWith('--framework'));
+  const framework = frameworkFlag ? frameworkFlag.split('=')[1] : null;
+  
+  console.log(`\n🧪 GENERATING ${framework || gen.detectFramework().toUpperCase()} TESTS FOR: ${file}\n`);
+  const tests = await gen.generateTests(file, framework, (prompt) => askAI(prompt));
+  
+  const testFile = file.replace(/\.[^.]+$/, `.test.${file.split('.').pop()}`);
+  console.log(`\n💾 WRITING TO: ${testFile}\n`);
+  fs.writeFileSync(testFile, tests);
+  console.log('✅ Tests generated!');
+}
+
+function testRunCommand(args) {
+  const gen = new TestGenerator();
+  const cmd = gen.runTests(null, args);
+  console.log(`\n▶️  RUNNING: ${cmd}\n`);
+  const { execSync } = require('child_process');
+  try {
+    const output = execSync(cmd, { encoding: 'utf8', stdio: 'inherit' });
+  } catch (e) {
+    // Test failures throw, but we showed output via inherit
+  }
+}
+
+// ===== DOC GENERATOR COMMANDS =====
+
+async function docsCommand(args) {
+  const [subcmd, ...rest] = args;
+  const gen = new DocGenerator();
+  
+  switch(subcmd) {
+    case 'readme': {
+      console.log('\n📝 GENERATING README...\n');
+      const readme = await gen.generateREADME((prompt) => askAI(prompt));
+      fs.writeFileSync('README.md', readme);
+      console.log('✅ README.md created!');
+      break;
+    }
+    
+    case 'jsdoc': {
+      const [file] = rest;
+      if (!file) { console.log('Usage: athelgard docs jsdoc <file>'); return; }
+      console.log(`\n📝 ADDING JSDOC TO: ${file}\n`);
+      const documented = await gen.addJSDoc(file, (prompt) => askAI(prompt));
+      fs.writeFileSync(file, documented);
+      console.log('✅ JSDoc comments added!');
+      break;
+    }
+    
+    case 'api': {
+      const [file] = rest;
+      if (!file) { console.log('Usage: athelgard docs api <file>'); return; }
+      console.log(`\n📝 GENERATING API DOCS FOR: ${file}\n`);
+      const docs = await gen.generateAPIDocs(file, (prompt) => askAI(prompt));
+      const outFile = file.replace(/\.[^.]+$/, '.API.md');
+      fs.writeFileSync(outFile, docs);
+      console.log(`✅ API docs written to ${outFile}`);
+      break;
+    }
+    
+    case 'changelog': {
+      console.log('\n📝 GENERATING CHANGELOG...\n');
+      const changelog = await gen.generateChangelog((prompt) => askAI(prompt));
+      fs.writeFileSync('CHANGELOG.md', changelog);
+      console.log('✅ CHANGELOG.md created!');
+      break;
+    }
+    
+    case 'license': {
+      const [type = 'MIT', author = ''] = rest;
+      const license = gen.generateLicense(type, author);
+      fs.writeFileSync('LICENSE', license);
+      console.log(`✅ ${type} LICENSE created!`);
+      break;
+    }
+    
+    default:
+      console.log(`
+📝 DOC GENERATOR
+
+  athelgard docs readme              - Generate README.md
+  athelgard docs jsdoc <file>        - Add JSDoc comments
+  athelgard docs api <file>          - Generate API docs
+  athelgard docs changelog           - Generate CHANGELOG
+  athelgard docs license [type]      - Generate LICENSE
+`);
+  }
+}
+
 function help() {
   console.log(`
-🐉 ATHELGARD CLI
+🐉 ATHELGARD CLI - Captain's AI Coding Agent + Prompt Engineer + Skills
 
+📁 CORE:
   athelgard config
   athelgard ask "question"
   athelgard chat
   athelgard read <file>
   athelgard write <file> "content" --apply
-  athelgard edit <file> "instruction"           # shows a candidate diff
-  athelgard edit <file> "instruction" --apply   # writes reviewed candidate
+  athelgard edit <file> "instruction"
+  athelgard edit <file> "instruction" --apply
   athelgard github list [owner]
   athelgard github get <owner/repo> <path>
 
 🎯 PROMPT ENGINEER:
-  athelgard prompt list                    - List all templates
-  athelgard prompt use <name> "query"      - Use a template
-  athelgard prompt test <name> "query"     - A/B test variations
-  athelgard prompt optimize "prompt"       - Analyze & optimize
-  athelgard prompt analyze "prompt"        - Score a prompt
-  athelgard prompt engineer                - Interactive builder
-  athelgard prompt create                  - Create new template
+  athelgard prompt list
+  athelgard prompt use <name> "query"
+  athelgard prompt test <name> "query"
+  athelgard prompt optimize "prompt"
+  athelgard prompt analyze "prompt"
+  athelgard prompt engineer
+  athelgard prompt create
+
+🕵️ GIT INTELLIGENCE:
+  athelgard git blame <file> [line]
+  athelgard git log [n]
+  athelgard git status
+  athelgard git diff [base]
+  athelgard git summary [days]
+  athelgard git suggest-commit
+  athelgard git branches
+  athelgard git stash
+  athelgard git contributors
+  athelgard git stats
+
+🗺️ NAVIGATOR:
+  athelgard map [dir]
+  athelgard tree [dir]
+  athelgard stats
+  athelgard find <pattern>
+  athelgard grep <term> [ext]
+  athelgard detect
+
+🧩 CODE CHUNKER:
+  athelgard chunk <file> [function]
+  athelgard context <file> <line>
+
+🧪 TEST GENERATOR:
+  athelgard test-gen <file>
+  athelgard test-gen --coverage
+  athelgard test-run [pattern]
+
+📝 DOC GENERATOR:
+  athelgard docs readme
+  athelgard docs jsdoc <file>
+  athelgard docs api <file>
+  athelgard docs changelog
+  athelgard docs license [type]
 `);
 }
 
@@ -390,6 +832,29 @@ async function main() {
   if (command === 'edit') return editFile(args);
   if (command === 'github') return github(args);
   if (command === 'prompt') return promptCommand(args);
+
+  // ===== GIT INTELLIGENCE =====
+  if (command === 'git') return gitCommand(args);
+
+  // ===== NAVIGATOR =====
+  if (command === 'map') return mapCommand(args);
+  if (command === 'tree') return treeCommand(args);
+  if (command === 'stats') return statsCommand(args);
+  if (command === 'find') return findCommand(args);
+  if (command === 'grep') return grepCommand(args);
+  if (command === 'detect') return detectCommand(args);
+
+  // ===== CODE CHUNKER =====
+  if (command === 'chunk') return chunkCommand(args);
+  if (command === 'context') return contextCommand(args);
+
+  // ===== TEST GENERATOR =====
+  if (command === 'test-gen') return testGenCommand(args);
+  if (command === 'test-run') return testRunCommand(args);
+
+  // ===== DOC GENERATOR =====
+  if (command === 'docs') return docsCommand(args);
+
   return console.log(`\n🐉 ${await askAI([command, ...args].join(' '))}`);
 }
 
