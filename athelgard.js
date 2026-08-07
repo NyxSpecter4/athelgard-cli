@@ -18,7 +18,7 @@ const os = require('os');
 const https = require('https');
 const readline = require('readline');
 const promptEngineer = require('./prompt-engineer');
-const DeepSeekKPI = require('./skills/deepseek-kpi');
+const DeepSeekAPI = require('./skills/deepseek-api');
 const GitIntel = require('./skills/git-intel');
 const Navigator = require('./skills/navigator');
 const CodeChunker = require('./skills/chunker');
@@ -858,23 +858,23 @@ async function vercelCommand(args) {
   }
 }
 
-// ===== DEEPSEEK KPI COMMANDS =====
+// ===== DEEPSEEK API COMMANDS =====
 
-async function kpiCommand(args) {
+async function apiCommand(args) {
   const [subcmd, ...rest] = args;
-  const kpi = new DeepSeekKPI();
+  const api = new DeepSeekAPI();
 
   switch(subcmd) {
     case 'dashboard': {
       const days = parseInt(rest[0]) || 7;
-      const dash = kpi.getDashboard(days);
+      const dash = api.getDashboard(days);
       
-      console.log(`\n📊 DEEPSEEK KPI DASHBOARD (${dash.period})\n`);
+      console.log(`\n📊 DEEPSEEK API DASHBOARD (${dash.period})\n`);
       console.log(`   Health Score: ${dash.healthScore}/100`);
-      console.log(`   Total Calls: ${DeepSeekKPI.formatNumber(dash.totalCalls)}`);
-      console.log(`   Total Cost: ${DeepSeekKPI.formatCurrency(dash.totalCost)}`);
-      console.log(`   Total Tokens: ${DeepSeekKPI.formatNumber(dash.totalTokens)}`);
-      console.log(`   Avg Latency: ${DeepSeekKPI.msToSeconds(dash.avgLatency)}`);
+      console.log(`   Total Calls: ${DeepSeekAPI.formatNumber(dash.totalCalls)}`);
+      console.log(`   Total Cost: ${DeepSeekAPI.formatCurrency(dash.totalCost)}`);
+      console.log(`   Total Tokens: ${DeepSeekAPI.formatNumber(dash.totalTokens)}`);
+      console.log(`   Avg Latency: ${DeepSeekAPI.msToSeconds(dash.avgLatency)}`);
       console.log(`   Success Rate: ${dash.successRate}%`);
       console.log(`   Error Rate: ${dash.errorRate}%`);
       console.log(`   Trend: ${dash.trend}`);
@@ -888,10 +888,10 @@ async function kpiCommand(args) {
     case 'calls': {
       const n = parseInt(rest[0]) || 10;
       console.log(`\n📞 LAST ${n} CALLS:\n`);
-      for (const call of kpi.data.calls.slice(-n).reverse()) {
+      for (const call of api.data.calls.slice(-n).reverse()) {
         const icon = call.status === 'success' ? '✅' : '❌';
-        const cost = DeepSeekKPI.formatCurrency(call.cost);
-        console.log(`   ${icon} ${call.timestamp.split('T')[1].slice(0,8)} | ${call.model} | ${call.tokens} tokens | ${cost} | ${DeepSeekKPI.msToSeconds(call.latency)}`);
+        const cost = DeepSeekAPI.formatCurrency(call.cost);
+        console.log(`   ${icon} ${call.timestamp.split('T')[1].slice(0,8)} | ${call.model} | ${call.tokens} tokens | ${cost} | ${DeepSeekAPI.msToSeconds(call.latency)}`);
       }
       break;
     }
@@ -900,16 +900,16 @@ async function kpiCommand(args) {
       const count = parseInt(rest[0]) || 5;
       console.log(`\n🎲 SIMULATING ${count} CALLS...\n`);
       for (let i = 0; i < count; i++) {
-        const call = kpi.simulateCall();
-        console.log(`   ${call.status === 'success' ? '✅' : '❌'} ${call.model} | ${call.tokens} tokens | ${DeepSeekKPI.formatCurrency(call.cost)}`);
+        const call = api.simulateCall();
+        console.log(`   ${call.status === 'success' ? '✅' : '❌'} ${call.model} | ${call.tokens} tokens | ${DeepSeekAPI.formatCurrency(call.cost)}`);
       }
-      console.log(`\n   Total simulated cost: ${DeepSeekKPI.formatCurrency(kpi.data.totalCost)}`);
+      console.log(`\n   Total simulated cost: ${DeepSeekAPI.formatCurrency(api.data.totalCost)}`);
       break;
     }
 
     case 'phone': {
       console.log('\n📱 FETCHING PHONE CALLS FROM SUPABASE...\n');
-      const calls = await kpi.fetchFromSupabase();
+      const calls = await api.fetchFromSupabase();
       
       if (!calls || calls.length === 0) {
         console.log('   No phone call data found. Make sure SUPABASE_URL and SUPABASE_ANON_KEY are set.');
@@ -917,10 +917,10 @@ async function kpiCommand(args) {
         return;
       }
       
-      const analysis = kpi.analyzePhoneCalls(calls);
+      const analysis = api.analyzePhoneCalls(calls);
       console.log(`   Total Calls: ${analysis.totalCalls}`);
-      console.log(`   Total Tokens: ${DeepSeekKPI.formatNumber(analysis.totalTokens)}`);
-      console.log(`   Total Cost: ${DeepSeekKPI.formatCurrency(analysis.totalCost)}`);
+      console.log(`   Total Tokens: ${DeepSeekAPI.formatNumber(analysis.totalTokens)}`);
+      console.log(`   Total Cost: ${DeepSeekAPI.formatCurrency(analysis.totalCost)}`);
       console.log(`   Top Intent: ${analysis.topIntent}`);
       console.log(`   Peak Hour: ${analysis.peakHour}:00`);
       console.log(`\n   Intents:`);
@@ -929,7 +929,7 @@ async function kpiCommand(args) {
       }
       
       // Generate prompt improvements
-      const improvements = kpi.generatePromptImprovements(analysis);
+      const improvements = api.generatePromptImprovements(analysis);
       if (improvements.length > 0) {
         console.log(`\n💡 PROMPT IMPROVEMENTS FROM PHONE CALLS:`);
         for (const imp of improvements) {
@@ -943,13 +943,13 @@ async function kpiCommand(args) {
 
     case 'report': {
       const days = parseInt(rest[0]) || 7;
-      const dash = kpi.getDashboard(days);
+      const dash = api.getDashboard(days);
       
-      console.log(`\n📈 DEEPSEEK KPI REPORT (${dash.period})\n`);
+      console.log(`\n📈 DEEPSEEK API REPORT (${dash.period})\n`);
       console.log(`Health Score: ${dash.healthScore}/100`);
       console.log(`Success Rate: ${dash.successRate}%`);
-      console.log(`Avg Latency: ${DeepSeekKPI.msToSeconds(dash.avgLatency)}`);
-      console.log(`Total Cost: ${DeepSeekKPI.formatCurrency(dash.totalCost)}`);
+      console.log(`Avg Latency: ${DeepSeekAPI.msToSeconds(dash.avgLatency)}`);
+      console.log(`Total Cost: ${DeepSeekAPI.formatCurrency(dash.totalCost)}`);
       console.log(`Trend: ${dash.trend}`);
       
       if (dash.daily.length > 0) {
@@ -958,7 +958,7 @@ async function kpiCommand(args) {
           const avgLat = day.latency.length > 0 
             ? Math.round(day.latency.reduce((a,b) => a+b, 0) / day.latency.length)
             : 0;
-          console.log(`   ${day.date}: ${day.calls} calls, ${day.tokens} tokens, ${DeepSeekKPI.formatCurrency(day.cost)}, avg ${DeepSeekKPI.msToSeconds(avgLat)}`);
+          console.log(`   ${day.date}: ${day.calls} calls, ${day.tokens} tokens, ${DeepSeekAPI.formatCurrency(day.cost)}, avg ${DeepSeekAPI.msToSeconds(avgLat)}`);
         }
       }
       break;
@@ -966,13 +966,13 @@ async function kpiCommand(args) {
 
     default:
       console.log(`
-📊 DEEPSEEK KPI — Track API usage, costs, and learn from phone calls
+📊 DEEPSEEK API — Track API usage, costs, and learn from phone calls
 
-  athelgard kpi dashboard [days]     - Show health dashboard
-  athelgard kpi calls [n]            - Show last N calls
-  athelgard kpi simulate [n]         - Simulate N calls (test mode)
-  athelgard kpi phone                - Analyze phone calls from Supabase
-  athelgard kpi report [days]        - Generate detailed report
+  athelgard api dashboard [days]     - Show health dashboard
+  athelgard api calls [n]            - Show last N calls
+  athelgard api simulate [n]         - Simulate N calls (test mode)
+  athelgard api phone                - Analyze phone calls from Supabase
+  athelgard api report [days]        - Generate detailed report
 
 Environment:
   SUPABASE_URL=your-project.supabase.co
@@ -1049,12 +1049,12 @@ function help() {
   athelgard vercel env-add <project> <key> <value>
   athelgard vercel domains <project>
 
-📊 DEEPSEEK KPI:
-  athelgard kpi dashboard [days]     - API health dashboard
-  athelgard kpi calls [n]            - Last N calls
-  athelgard kpi simulate [n]         - Simulate calls
-  athelgard kpi phone                - Analyze phone calls from Supabase
-  athelgard kpi report [days]        - Detailed report
+📊 DEEPSEEK API:
+  athelgard api dashboard [days]     - API health dashboard
+  athelgard api calls [n]            - Last N calls
+  athelgard api simulate [n]         - Simulate calls
+  athelgard api phone                - Analyze phone calls from Supabase
+  athelgard api report [days]        - Detailed report
 `);
 }
 
@@ -1100,8 +1100,8 @@ async function main() {
   // ===== VERCEL =====
   if (command === 'vercel') return vercelCommand(args);
 
-  // ===== DEEPSEEK KPI =====
-  if (command === 'kpi') return kpiCommand(args);
+  // ===== DEEPSEEK API =====
+  if (command === 'api') return apiCommand(args);
 
   return console.log(`\n🐉 ${await askAI([command, ...args].join(' '))}`);
 }
