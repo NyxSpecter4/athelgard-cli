@@ -11,6 +11,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const DiscordAlerter = require('./skills/discord-alerts');
 
 // ============ DEEP METRICS COLLECTOR ============
 
@@ -642,6 +643,7 @@ async function main() {
   const collector = new MetricsCollector();
   const store = new BaselineStore();
   const reporter = new ReportGenerator();
+  const alerter = new DiscordAlerter(process.env.DISCORD_WEBHOOK);
   
   if (cmd === 'check') {
     const url = process.argv[3];
@@ -666,6 +668,7 @@ async function main() {
     
     console.log('\n🐉 ATHELGARD BASELINE PRO\n');
     const results = [];
+    const discordResults = [];
     
     for (const site of sites) {
       console.log(`Checking ${site.name}...`);
@@ -676,7 +679,33 @@ async function main() {
       
       const status = result.isUp ? '✅ UP' : '❌ DOWN';
       console.log(`   ${status} | Score: ${result.metrics.score}/100 | ${result.metrics.ttfb}ms`);
+      
+      // Check for alerts
+      const prev = store.data.sites[site.name]?.runs?.[store.data.sites[site.name].runs.length - 2];
+      if (prev) {
+        if (!result.isUp && prev.isUp) {
+          await alerter.siteDown(site.name, site.url, result.error);
+        }
+        if (result.isUp && !prev.isUp) {
+          await alerter.siteRecovered(site.name, site.url, result.metrics.score);
+        }
+        if (result.metrics.score < prev.score - 10) {
+          await alerter.scoreDrop(site.name, result.metrics.score, prev.score, site.url);
+        }
+      }
+      
+      discordResults.push({
+        name: site.name,
+        isUp: result.isUp,
+        score: result.metrics.score,
+        ttfb: result.metrics.ttfb,
+        size: reporter.formatBytes(result.metrics.bytes),
+        trend: store.getTrend(site.name)
+      });
     }
+    
+    // Send Discord summary
+    await alerter.dailySummary(discordResults);
     
     // Generate HTML report
     const reportPath = path.join(process.cwd(), 'baseline-report.html');
@@ -684,8 +713,46 @@ async function main() {
     fs.writeFileSync(reportPath, html);
     
     console.log(`\n📊 Report generated: ${reportPath}`);
-    console.log(`   Open in browser to see radar charts, trends, full matrix`);
+    console.log(`   Discord alerts sent`);
     console.log(`   History: ${Object.keys(store.data.sites).length} sites tracked`);
+  }
+  else if (cmd === 'barometer') {
+    // Quick 1-line status check
+    const sites = [
+      { url: 'https://athelgard.io', name: 'athelgard-io' },
+      { url: 'https://bountywarz.com', name: 'bountywarz' },
+    ];
+    
+    console.log('\n🌡️ ATHELGARD BAROMETER\n');
+    const barometerResults = [];
+    
+    for (const site of sites) {
+      const result = await collector.collect(site.url, site.name);
+      result.metrics.score = collector.calculateScore(result);
+      store.addResult(site.name, result);
+      
+      const icon = result.isUp ? '🟢' : '🔴';
+      const scoreBar = '█'.repeat(Math.round(result.metrics.score / 10)) + '░'.repeat(10 - Math.round(result.metrics.score / 10));
+      const trend = store.getTrend(site.name);
+      const trendIcon = trend === 'improving' ? '📈' : trend === 'declining' ? '📉' : '➡️';
+      
+      console.log(`${icon} ${site.name.padEnd(15)} [${scoreBar}] ${result.metrics.score}/100 ${trendIcon} ${result.metrics.ttfb}ms`);
+      
+      barometerResults.push({
+        name: site.name,
+        isUp: result.isUp,
+        score: result.metrics.score,
+        ttfb: result.metrics.ttfb,
+        size: reporter.formatBytes(result.metrics.bytes),
+        trend
+      });
+    }
+    
+    const allUp = barometerResults.every(r => r.isUp);
+    console.log(`\n${allUp ? '✅ All systems operational' : '⚠️ Some sites need attention'}`);
+    
+    // Send to Discord
+    await alerter.barometer(barometerResults);
   }
   else if (cmd === 'report') {
     // Just regenerate report from existing data
@@ -729,9 +796,13 @@ async function main() {
 
 Usage:
   node baseline-pro.js check <url> [name]    Deep check one site
-  node baseline-pro.js run                    Full report with charts
+  node baseline-pro.js run                    Full report + Discord summary
+  node baseline-pro.js barometer              Quick fleet status
   node baseline-pro.js report                 Regenerate HTML from history
   node baseline-pro.js history [site]         Show history
+
+Environment:
+  DISCORD_WEBHOOK=your_webhook_url node baseline-pro.js run
 
 Features:
   • 15+ submetrics per site (speed, SEO, security, performance)
@@ -741,6 +812,7 @@ Features:
   • Bar charts for performance comparison
   • Full metrics matrix (yes/no for every check)
   • HTML dashboard with Chart.js
+  • Discord alerts for score drops and downtime
   • 100-run history per site
 `);
   }
