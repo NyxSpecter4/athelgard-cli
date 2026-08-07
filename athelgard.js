@@ -1058,6 +1058,11 @@ function help() {
 
 🌡️ STATUS:
   athelgard status                   - Unified dashboard (sites + API + system)
+
+🔴 PEAK PROTECTION:
+  athelgard peak status              - Check if DeepSeek is in peak pricing
+  athelgard peak schedule            - Show peak windows
+  athelgard peak savings             - Calculate monthly savings
 `);
 }
 
@@ -1105,6 +1110,11 @@ async function main() {
 
   // ===== DEEPSEEK API =====
   if (command === 'api') return apiCommand(args);
+
+  // ===== PEAK PROTECTION =====
+  if (command === 'peak') {
+    return require('child_process').execSync('node peak-protection.js ' + (args[0] || 'status'), { cwd: __dirname, stdio: 'inherit' });
+  }
 
   // ===== STATUS =====
   if (command === 'status') {
