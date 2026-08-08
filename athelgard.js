@@ -1003,8 +1003,8 @@ function burnCommand() {
     { name: 'Manus (downgrading)', cost: 60, cat: 'AI', keep: 'review' },
     { name: 'IBM BOB', cost: 60, cat: 'AI', keep: true },
     { name: 'SuperGrok (dropped)', cost: 0, cat: 'AI', keep: 'dropped' },
-    { name: 'use.ai', cost: 30, cat: 'AI', keep: 'review' },
-    { name: 'Ninja AI', cost: 25, cat: 'AI', keep: 'review' },
+    { name: 'use.ai (dropped)', cost: 0, cat: 'AI', keep: 'dropped' },
+    { name: 'Ninja AI (dropped)', cost: 0, cat: 'AI', keep: 'dropped' },
     { name: 'Google AI Pro', cost: 20, cat: 'AI', keep: 'review' },
     { name: 'Kimi', cost: 20, cat: 'AI', keep: true },
     { name: 'Together AI', cost: 20, cat: 'AI', keep: 'review' },
@@ -1028,7 +1028,7 @@ function burnCommand() {
     { name: 'Office (dropped)', cost: 0, cat: 'Office', keep: 'dropped' },
     // Telecom
     { name: 'Cricket', cost: 65, cat: 'Telecom', keep: 'review' },
-    { name: 'Straight Talk', cost: 50, cat: 'Telecom', keep: true }
+    { name: 'Straight Talk (Mantis - dropped)', cost: 0, cat: 'Telecom', keep: 'dropped' }
   ];
   
   const ai = subs.filter(s => s.cat === 'AI');
@@ -1057,11 +1057,11 @@ function burnCommand() {
   
   const dropped = subs.filter(s => s.keep === 'dropped');
   if (dropped.length > 0) {
-    const droppedSaved = dropped.reduce((a, s) => a + (s.name.includes('Devin') ? 200 : s.name.includes('Office') ? 530 : s.name.includes('SuperGrok') ? 30 : s.name.includes('Code Rabbit') ? 30 : 0), 0);
+    const droppedSaved = dropped.reduce((a, s) => a + (s.name.includes('Devin') ? 200 : s.name.includes('Office') ? 530 : s.name.includes('SuperGrok') ? 30 : s.name.includes('Code Rabbit') ? 30 : s.name.includes('use.ai') ? 30 : s.name.includes('Ninja') ? 25 : s.name.includes('Mantis') ? 50 : 0), 0);
     console.log(`${C.green}DROPPED THIS MONTH (saved):${C.reset}`);
     dropped.forEach(s => {
-      const saved = s.name.includes('Devin') ? 200 : s.name.includes('Office') ? 530 : s.name.includes('SuperGrok') ? 30 : s.name.includes('Code Rabbit') ? 30 : 0;
-      console.log(`  ✂️  ${s.name.replace(' (dropped)', '')}: $${saved}/mo saved`);
+      const saved = s.name.includes('Devin') ? 200 : s.name.includes('Office') ? 530 : s.name.includes('SuperGrok') ? 30 : s.name.includes('Code Rabbit') ? 30 : s.name.includes('use.ai') ? 30 : s.name.includes('Ninja') ? 25 : s.name.includes('Mantis') ? 50 : 0;
+      console.log(`  ✂️  ${s.name.replace(/ \(dropped.*\)/, '')}: $${saved}/mo saved`);
     });
     console.log(`  ${C.bold}Total saved: $${droppedSaved}/mo = $${droppedSaved*12}/yr${C.reset}\n`);
   }
@@ -1075,7 +1075,6 @@ function burnCommand() {
   console.log(`  • Cricket → Supreme Unlimited: save $5/mo, 5x data`);
   console.log(`  • Railway vs Vercel overlap: review $20/mo`);
   console.log(`  • Redis → Supabase built-in: save $8/mo`);
-  console.log(`  • use.ai + Ninja overlap: pick one, save $25-30/mo`);
   console.log(`  • Manus downgrade: save $100-160/mo\n`);
   
   const optimizable = subs.filter(s => s.keep === 'review').reduce((a, s) => a + s.cost, 0);
