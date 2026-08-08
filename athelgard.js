@@ -988,6 +988,79 @@ Environment:
   }
 }
 
+// ===== BURN RATE DASHBOARD =====
+function burnCommand() {
+  const C = process.stdout.isTTY ? {
+    bold: '\x1b[1m', reset: '\x1b[0m', red: '\x1b[31m', green: '\x1b[32m',
+    yellow: '\x1b[33m', cyan: '\x1b[36m'
+  } : { bold: '', reset: '', red: '', green: '', yellow: '', cyan: '' };
+  
+  const subs = [
+    { name: 'Claude (post-Aug 1)', cost: 125, cat: 'AI', keep: true },
+    { name: 'Devin (alt months)', cost: 100, cat: 'AI', keep: true },
+    { name: 'GitHub Copilot Max', cost: 99, cat: 'AI', keep: true },
+    { name: 'Manus (downgrading)', cost: 60, cat: 'AI', keep: 'review' },
+    { name: 'IBM BOB', cost: 60, cat: 'AI', keep: true },
+    { name: 'SuperGrok', cost: 30, cat: 'AI', keep: true },
+    { name: 'use.ai', cost: 30, cat: 'AI', keep: 'review' },
+    { name: 'Ninja AI', cost: 25, cat: 'AI', keep: 'review' },
+    { name: 'Google AI Pro', cost: 20, cat: 'AI', keep: 'review' },
+    { name: 'Kimi', cost: 20, cat: 'AI', keep: true },
+    { name: 'Together AI', cost: 20, cat: 'AI', keep: 'review' },
+    { name: 'Replicate', cost: 20, cat: 'AI', keep: 'review' },
+    { name: 'Twilio', cost: 20, cat: 'AI', keep: true },
+    { name: 'Perplexity', cost: 17, cat: 'AI', keep: true },
+    { name: 'ElevenLabs', cost: 22, cat: 'AI', keep: true },
+    { name: 'Simli', cost: 10, cat: 'AI', keep: true },
+    { name: 'Hugging Face', cost: 9, cat: 'AI', keep: true },
+    { name: 'Supabase', cost: 30, cat: 'Infra', keep: true },
+    { name: 'Vercel', cost: 20, cat: 'Infra', keep: true },
+    { name: 'Railway', cost: 20, cat: 'Infra', keep: 'review' },
+    { name: 'Redis', cost: 8, cat: 'Infra', keep: 'review' },
+    { name: 'GitHub Pro', cost: 4, cat: 'Infra', keep: true },
+    { name: 'Office', cost: 530, cat: 'Office', keep: true },
+    { name: 'Cricket', cost: 65, cat: 'Telecom', keep: 'review' },
+    { name: 'Straight Talk', cost: 50, cat: 'Telecom', keep: true }
+  ];
+  
+  const ai = subs.filter(s => s.cat === 'AI');
+  const infra = subs.filter(s => s.cat === 'Infra');
+  const office = subs.filter(s => s.cat === 'Office');
+  const telecom = subs.filter(s => s.cat === 'Telecom');
+  
+  const aiCost = ai.reduce((a, s) => a + s.cost, 0);
+  const infraCost = infra.reduce((a, s) => a + s.cost, 0);
+  const officeCost = office.reduce((a, s) => a + s.cost, 0);
+  const telecomCost = telecom.reduce((a, s) => a + s.cost, 0);
+  const total = aiCost + infraCost + officeCost + telecomCost;
+  
+  console.log(`${C.bold}🔥 ATHELGARD BURN RATE${C.reset}`);
+  console.log(`${C.bold}Real numbers. No bullshit.${C.reset}\n`);
+  
+  console.log(`${C.cyan}CATEGORY BREAKDOWN${C.reset}`);
+  console.log(`  AI/ML Tools:     $${aiCost.toString().padStart(4)}/mo  ${C.red}(${Math.round(aiCost/total*100)}%)${C.reset}`);
+  console.log(`  Office:          $${officeCost.toString().padStart(4)}/mo  ${C.red}(${Math.round(officeCost/total*100)}%)${C.reset}`);
+  console.log(`  Infrastructure:  $${infraCost.toString().padStart(4)}/mo  ${C.green}(${Math.round(infraCost/total*100)}%)${C.reset}`);
+  console.log(`  Telecom:         $${telecomCost.toString().padStart(4)}/mo  ${C.yellow}(${Math.round(telecomCost/total*100)}%)${C.reset}`);
+  console.log(`  ${C.bold}TOTAL:           $${total.toString().padStart(4)}/mo  = $${(total*12).toLocaleString()}/yr${C.reset}\n`);
+  
+  console.log(`${C.yellow}REVIEW THESE (potential cuts):${C.reset}`);
+  subs.filter(s => s.keep === 'review').forEach(s => {
+    console.log(`  • ${s.name}: $${s.cost}/mo`);
+  });
+  
+  console.log(`\n${C.green}OPTIMIZATION OPPORTUNITIES:${C.reset}`);
+  console.log(`  • Cricket → Supreme Unlimited: save $5/mo, 5x data`);
+  console.log(`  • Railway vs Vercel overlap: review $20/mo`);
+  console.log(`  • Redis → Supabase built-in: save $8/mo`);
+  console.log(`  • use.ai + Ninja overlap: pick one, save $25-30/mo`);
+  console.log(`  • Manus downgrade: save $100-160/mo\n`);
+  
+  const optimizable = subs.filter(s => s.keep === 'review').reduce((a, s) => a + s.cost, 0);
+  console.log(`${C.bold}If you cut all 'review' items: save $${optimizable}/mo = $${optimizable*12}/yr${C.reset}`);
+  console.log(`${C.bold}Optimized burn: $${total - optimizable}/mo = $${((total-optimizable)*12).toLocaleString()}/yr${C.reset}\n`);
+}
+
 function help() {
   console.log(`
 🐉 ATHELGARD CLI - Captain's AI Coding Agent + Prompt Engineer + Skills
@@ -1070,6 +1143,18 @@ function help() {
   athelgard peak status              - Check if DeepSeek is in peak pricing
   athelgard peak schedule            - Show peak windows
   athelgard peak savings             - Calculate monthly savings
+
+🔒 SECURITY:
+  athelgard scan [path]              - Scan code for vulnerabilities
+
+🩹 DEVOPS:
+  athelgard heal                     - Auto-heal infrastructure issues
+
+🎯 ORCHESTRATOR:
+  athelgard delegate "<task>"        - Auto-route task to right agent
+
+💰 BURN RATE:
+  athelgard burn                     - Real financial dashboard (actual costs)
 `);
 }
 
@@ -1126,6 +1211,26 @@ async function main() {
   // ===== STATUS =====
   if (command === 'status') {
     return require('child_process').execSync('node status.js', { cwd: __dirname, stdio: 'inherit' });
+  }
+
+  // ===== BURN RATE =====
+  if (command === 'burn') {
+    return burnCommand();
+  }
+
+  // ===== SECURITY SCANNER =====
+  if (command === 'scan') {
+    return require('child_process').execSync('node security-scan.js ' + (args[0] || '.'), { cwd: __dirname, stdio: 'inherit' });
+  }
+
+  // ===== AUTO-HEAL =====
+  if (command === 'heal') {
+    return require('child_process').execSync('node auto-heal.js', { cwd: __dirname, stdio: 'inherit' });
+  }
+
+  // ===== AGENT ORCHESTRATOR =====
+  if (command === 'delegate') {
+    return require('child_process').execSync('node delegate.js "' + args.join(' ') + '"', { cwd: __dirname, stdio: 'inherit' });
   }
 
   return console.log(`\n🐉 ${await askAI([command, ...args].join(' '))}`);
