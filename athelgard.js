@@ -1095,10 +1095,10 @@ function burnCommand() {
 
 function help() {
   console.log(`
-    ^   ^
-   [O.o]
-    /)__)
-   -"--"-
+,___,
+ [O.o]
+ /)__)
+-"--"-
 🐉 ATHELGARD CLI — Captain's Coding Agent + Prompt Engineer + Skills
 
 📁 CORE:
