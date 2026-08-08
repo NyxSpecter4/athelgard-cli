@@ -996,12 +996,13 @@ function burnCommand() {
   } : { bold: '', reset: '', red: '', green: '', yellow: '', cyan: '' };
   
   const subs = [
+    // AI/ML Tools (ACTUAL costs from Captain)
     { name: 'Claude (post-Aug 1)', cost: 125, cat: 'AI', keep: true },
-    { name: 'Devin (alt months)', cost: 100, cat: 'AI', keep: true },
-    { name: 'GitHub Copilot Max', cost: 99, cat: 'AI', keep: true },
+    { name: 'Devin (dropped this month)', cost: 0, cat: 'AI', keep: 'dropped' },
+    { name: 'GitHub Copilot', cost: 99, cat: 'AI', keep: true },
     { name: 'Manus (downgrading)', cost: 60, cat: 'AI', keep: 'review' },
     { name: 'IBM BOB', cost: 60, cat: 'AI', keep: true },
-    { name: 'SuperGrok', cost: 30, cat: 'AI', keep: true },
+    { name: 'SuperGrok (dropped)', cost: 0, cat: 'AI', keep: 'dropped' },
     { name: 'use.ai', cost: 30, cat: 'AI', keep: 'review' },
     { name: 'Ninja AI', cost: 25, cat: 'AI', keep: 'review' },
     { name: 'Google AI Pro', cost: 20, cat: 'AI', keep: 'review' },
@@ -1013,36 +1014,57 @@ function burnCommand() {
     { name: 'ElevenLabs', cost: 22, cat: 'AI', keep: true },
     { name: 'Simli', cost: 10, cat: 'AI', keep: true },
     { name: 'Hugging Face', cost: 9, cat: 'AI', keep: true },
+    // Build tools (CORRECTED — these cost money!)
+    { name: 'Cursor', cost: 20, cat: 'Build', keep: true },
+    { name: 'Qodo', cost: 30, cat: 'Build', keep: true },
+    { name: 'Code Rabbit (dropped)', cost: 0, cat: 'Build', keep: 'dropped' },
+    // Infrastructure
     { name: 'Supabase', cost: 30, cat: 'Infra', keep: true },
     { name: 'Vercel', cost: 20, cat: 'Infra', keep: true },
     { name: 'Railway', cost: 20, cat: 'Infra', keep: 'review' },
     { name: 'Redis', cost: 8, cat: 'Infra', keep: 'review' },
     { name: 'GitHub Pro', cost: 4, cat: 'Infra', keep: true },
-    { name: 'Office', cost: 530, cat: 'Office', keep: true },
+    // Office
+    { name: 'Office (dropped)', cost: 0, cat: 'Office', keep: 'dropped' },
+    // Telecom
     { name: 'Cricket', cost: 65, cat: 'Telecom', keep: 'review' },
     { name: 'Straight Talk', cost: 50, cat: 'Telecom', keep: true }
   ];
   
   const ai = subs.filter(s => s.cat === 'AI');
+  const build = subs.filter(s => s.cat === 'Build');
   const infra = subs.filter(s => s.cat === 'Infra');
   const office = subs.filter(s => s.cat === 'Office');
   const telecom = subs.filter(s => s.cat === 'Telecom');
   
   const aiCost = ai.reduce((a, s) => a + s.cost, 0);
+  const buildCost = build.reduce((a, s) => a + s.cost, 0);
   const infraCost = infra.reduce((a, s) => a + s.cost, 0);
   const officeCost = office.reduce((a, s) => a + s.cost, 0);
   const telecomCost = telecom.reduce((a, s) => a + s.cost, 0);
-  const total = aiCost + infraCost + officeCost + telecomCost;
+  const total = aiCost + buildCost + infraCost + officeCost + telecomCost;
   
   console.log(`${C.bold}🔥 ATHELGARD BURN RATE${C.reset}`);
   console.log(`${C.bold}Real numbers. No bullshit.${C.reset}\n`);
   
   console.log(`${C.cyan}CATEGORY BREAKDOWN${C.reset}`);
   console.log(`  AI/ML Tools:     $${aiCost.toString().padStart(4)}/mo  ${C.red}(${Math.round(aiCost/total*100)}%)${C.reset}`);
-  console.log(`  Office:          $${officeCost.toString().padStart(4)}/mo  ${C.red}(${Math.round(officeCost/total*100)}%)${C.reset}`);
+  console.log(`  Build Tools:     $${buildCost.toString().padStart(4)}/mo  ${C.yellow}(${Math.round(buildCost/total*100)}%)${C.reset}`);
   console.log(`  Infrastructure:  $${infraCost.toString().padStart(4)}/mo  ${C.green}(${Math.round(infraCost/total*100)}%)${C.reset}`);
   console.log(`  Telecom:         $${telecomCost.toString().padStart(4)}/mo  ${C.yellow}(${Math.round(telecomCost/total*100)}%)${C.reset}`);
+  console.log(`  Office:          $${officeCost.toString().padStart(4)}/mo  ${C.green}(${Math.round(officeCost/total*100)}%)${C.reset}`);
   console.log(`  ${C.bold}TOTAL:           $${total.toString().padStart(4)}/mo  = $${(total*12).toLocaleString()}/yr${C.reset}\n`);
+  
+  const dropped = subs.filter(s => s.keep === 'dropped');
+  if (dropped.length > 0) {
+    const droppedSaved = dropped.reduce((a, s) => a + (s.name.includes('Devin') ? 200 : s.name.includes('Office') ? 530 : s.name.includes('SuperGrok') ? 30 : s.name.includes('Code Rabbit') ? 30 : 0), 0);
+    console.log(`${C.green}DROPPED THIS MONTH (saved):${C.reset}`);
+    dropped.forEach(s => {
+      const saved = s.name.includes('Devin') ? 200 : s.name.includes('Office') ? 530 : s.name.includes('SuperGrok') ? 30 : s.name.includes('Code Rabbit') ? 30 : 0;
+      console.log(`  ✂️  ${s.name.replace(' (dropped)', '')}: $${saved}/mo saved`);
+    });
+    console.log(`  ${C.bold}Total saved: $${droppedSaved}/mo = $${droppedSaved*12}/yr${C.reset}\n`);
+  }
   
   console.log(`${C.yellow}REVIEW THESE (potential cuts):${C.reset}`);
   subs.filter(s => s.keep === 'review').forEach(s => {
