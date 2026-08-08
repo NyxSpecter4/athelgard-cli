@@ -161,11 +161,10 @@ async function chat() {
   const history = [];
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   console.log(`
-    ╭─────────╮
-    │  ◉   ◉  │
-    │    ▽    │
-    ╰────┬────╯
-         │
+    ,___,
+     [O.o]
+     /)__)
+    -"--"-
 🐉 Athelgard chat — type exit to leave`);
   const next = () => rl.question('You: ', async input => {
     if (input.trim().toLowerCase() === 'exit') return rl.close();
@@ -245,11 +244,10 @@ async function promptCommand(args) {
         
         const response = await askAI(prompt.user, [], prompt.system);
         console.log(`
-    ╭─────────╮
-    │  ◉   ◉  │
-    │    ▽    │
-    ╰────┬────╯
-         │
+    ,___,
+     [O.o]
+     /)__)
+    -"--"-
     🐉 Athelgard:
 ` + response);
       } catch (e) {
@@ -1097,11 +1095,10 @@ function burnCommand() {
 
 function help() {
   console.log(`
-    ╭─────────╮
-    │  ◉   ◉  │
-    │    ▽    │
-    ╰────┬────╯
-         │
+    ,___,
+     [O.o]
+     /)__)
+    -"--"-
 🐉 ATHELGARD CLI — Captain's Coding Agent + Prompt Engineer + Skills
 
 📁 CORE:
@@ -1202,11 +1199,10 @@ async function main() {
   if (!command || command === 'help') return help();
   if (command === 'config') return configure();
   if (command === 'ask') return console.log(`
-    ╭─────────╮
-    │  ◉   ◉  │
-    │    ▽    │
-    ╰────┬────╯
-         │
+    ,___,
+     [O.o]
+     /)__)
+    -"--"-
 🐉 ${await askAI(args.join(' '))}`);
   if (command === 'chat') return chat();
   if (command === 'read') return console.log(readFile(args[0]));
