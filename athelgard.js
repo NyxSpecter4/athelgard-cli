@@ -67,11 +67,18 @@ async function configure() {
   saveConfig(config);
 }
 function provider(config) {
-  const hour = Number(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/Los_Angeles' }).format(new Date()));
-  if (hour >= 9 && hour < 21 && config.kimiKey) {
+  // Peak Protection: Check DeepSeek peak hours (Beijing time)
+  const bjHour = Number(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: 'Asia/Shanghai' }).format(new Date()));
+  const isPeak = (bjHour >= 9 && bjHour < 12) || (bjHour >= 14 && bjHour < 18);
+  
+  if (isPeak && config.kimiKey) {
+    console.log(`🔴 Peak Protection: DeepSeek is 2x priced (${bjHour}:00 Beijing). Routing to Kimi...`);
     return { host: 'api.moonshot.cn', path: '/v1/chat/completions', key: config.kimiKey, model: 'kimi-k2.5' };
   }
-  if (config.deepseekKey) return { host: 'api.deepseek.com', path: '/chat/completions', key: config.deepseekKey, model: 'deepseek-chat' };
+  if (config.deepseekKey) {
+    if (!isPeak) console.log(`🟢 DeepSeek off-peak (${bjHour}:00 Beijing). Using cheapest rate...`);
+    return { host: 'api.deepseek.com', path: '/chat/completions', key: config.deepseekKey, model: 'deepseek-chat' };
+  }
   if (config.kimiKey) return { host: 'api.moonshot.cn', path: '/v1/chat/completions', key: config.kimiKey, model: 'kimi-k2.5' };
   throw new Error('No model key configured. Run: athelgard config');
 }
