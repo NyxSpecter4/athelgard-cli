@@ -1109,6 +1109,8 @@ function help() {
   athelgard write <file> "content" --apply
   athelgard edit <file> "instruction"
   athelgard edit <file> "instruction" --apply
+  athelgard edit-scope <file> <lines> "instruction" --apply
+  athelgard edit-loop <file> "instruction"
   athelgard github list [owner]
   athelgard github get <owner/repo> <path>
 
@@ -1201,6 +1203,211 @@ function help() {
 `);
 }
 
+// ===== STATUS COMMAND =====
+// Supports: athelgard status, athelgard status --json
+async function statusCommand(args) {
+  const jsonMode = args.includes('--json');
+  
+  // Site checks
+  const sites = [
+    { url: 'https://athelgard.io', name: 'athelgard.io' },
+    { url: 'https://bountywarz.com', name: 'bountywarz.com' }
+  ];
+  
+  const siteResults = [];
+  for (const site of sites) {
+    const start = Date.now();
+    try {
+      const res = await new Promise((resolve) => {
+        const client = site.url.startsWith('https:') ? require('https') : require('http');
+        const req = client.get(site.url, { timeout: 10000 }, (r) => {
+          let body = '';
+          r.on('data', chunk => body += chunk);
+          r.on('end', () => resolve({ up: r.statusCode === 200, status: r.statusCode, time: Date.now() - start, size: Buffer.byteLength(body) }));
+        });
+        req.on('error', () => resolve({ up: false, status: 0, time: Date.now() - start, size: 0 }));
+        req.on('timeout', () => { req.destroy(); resolve({ up: false, status: 0, time: 10000, size: 0 }); });
+      });
+      siteResults.push({ ...site, ...res });
+    } catch (e) {
+      siteResults.push({ ...site, up: false, status: 0, time: 0, size: 0, error: e.message });
+    }
+  }
+  
+  // Load baseline
+  const baselinePath = require('path').join(require('os').homedir(), '.athelgard-baseline-v2.json');
+  let baseline = null;
+  try { baseline = JSON.parse(require('fs').readFileSync(baselinePath)); } catch {}
+  
+  // Load API data
+  const apiPath = require('path').join(require('os').homedir(), '.athelgard-deepseek-kpi.json');
+  let apiData = null;
+  try { apiData = JSON.parse(require('fs').readFileSync(apiPath)); } catch {}
+  
+  // System info
+  const system = {
+    node: process.version,
+    platform: process.platform,
+    arch: process.arch,
+    cwd: process.cwd()
+  };
+  
+  const report = {
+    timestamp: new Date().toISOString(),
+    sites: siteResults,
+    baseline: baseline ? { sites: Object.fromEntries(Object.entries(baseline.sites || {}).map(([k, v]) => [k, { score: v.runs?.length ? v.runs[v.runs.length - 1].score : 0, runs: v.runs?.length || 0 }])) } : null,
+    api: apiData ? { totalCalls: apiData.calls?.length || 0, recentCalls: (apiData.calls || []).slice(-20) } : null,
+    system
+  };
+  
+  if (jsonMode) {
+    console.log(JSON.stringify(report, null, 2));
+    return;
+  }
+  
+  // Pretty print (fallback to status.js if available, else inline)
+  try {
+    require('child_process').execSync('node status.js', { cwd: __dirname, stdio: 'inherit' });
+  } catch {
+    // Inline fallback
+    console.log('\n🐉 ATHELGARD STATUS — ' + new Date().toLocaleString());
+    console.log('\n🌐 SITES:');
+    for (const s of siteResults) {
+      const icon = s.up ? '✅' : '❌';
+      console.log(`  ${icon} ${s.name}: ${s.up ? 'UP' : 'DOWN'} (${s.time}ms)`);
+    }
+    console.log('\n🔧 SYSTEM:', system.node, system.platform);
+  }
+}
+
+// ===== SCOPED EDIT (Coding Agent Loop) =====
+// Does targeted line-range edits instead of full-file replacement
+async function scopedEdit(args) {
+  const apply = args.includes('--apply');
+  const clean = args.filter(x => x !== '--apply');
+  const [file, lineRange, ...instructionParts] = clean;
+  const instruction = instructionParts.join(' ');
+  
+  if (!file || !instruction) {
+    throw new Error('Usage: athelgard edit-scope <file> <start[-end]> <instruction> [--apply]\n  Example: athelgard edit-scope app.js 15-22 "add error handling" --apply');
+  }
+  
+  const before = readFile(file);
+  const lines = before.split('\n');
+  
+  // Parse line range: "15" or "15-22"
+  let startLine, endLine;
+  if (lineRange && lineRange.includes('-')) {
+    [startLine, endLine] = lineRange.split('-').map(Number);
+  } else if (lineRange && !isNaN(Number(lineRange))) {
+    startLine = endLine = Number(lineRange);
+  } else {
+    // No line range provided — fallback to smart detection
+    startLine = 1;
+    endLine = lines.length;
+  }
+  
+  // Extract context around the target lines
+  const contextStart = Math.max(0, startLine - 5);
+  const contextEnd = Math.min(lines.length, endLine + 5);
+  const beforeContext = lines.slice(contextStart, startLine - 1).join('\n');
+  const targetLines = lines.slice(startLine - 1, endLine).join('\n');
+  const afterContext = lines.slice(endLine, contextEnd).join('\n');
+  
+  const prompt = `Edit lines ${startLine}-${endLine} of ${file}.\n\nBEFORE target (lines ${contextStart+1}-${startLine}):\n${beforeContext}\n\nTARGET to edit (lines ${startLine}-${endLine}):\n${targetLines}\n\nAFTER target (lines ${endLine+1}-${contextEnd}):\n${afterContext}\n\nINSTRUCTION: ${instruction}\n\nReturn ONLY the replacement for lines ${startLine}-${endLine}. Do NOT include surrounding context. Do NOT wrap in markdown fences unless the original had them.`;
+
+  const answer = await askAI(prompt);
+  const candidate = extractCode(answer) || answer.trim();
+  
+  // Build new file
+  const newLines = [
+    ...lines.slice(0, startLine - 1),
+    candidate,
+    ...lines.slice(endLine)
+  ];
+  const after = newLines.join('\n');
+  
+  console.log(`\n🎯 SCOPED EDIT: ${file} lines ${startLine}-${endLine}\n`);
+  console.log(`--- BEFORE (lines ${startLine}-${endLine}) ---`);
+  console.log(targetLines);
+  console.log('\n--- AFTER ---');
+  console.log(candidate);
+  console.log('');
+  
+  if (!apply) {
+    console.log('Review only. Re-run with --apply to write this change.');
+    return;
+  }
+  
+  writeFile(file, after);
+  console.log(`✓ Applied scoped edit to ${file} lines ${startLine}-${endLine}`);
+}
+
+// ===== ITERATIVE EDIT (Multi-round coding loop) =====
+// Supports back-and-forth refinement
+async function iterativeEdit(args) {
+  const file = args[0];
+  const instruction = args.slice(1).join(' ');
+  
+  if (!file || !instruction) {
+    throw new Error('Usage: athelgard edit-loop <file> <instruction>');
+  }
+  
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const ask = (q) => new Promise(resolve => rl.question(q, a => resolve(a.trim())));
+  
+  let before = readFile(file);
+  let current = before;
+  let round = 1;
+  
+  console.log(`\n🔄 ITERATIVE EDIT: ${file}`);
+  console.log(`Initial instruction: ${instruction}\n`);
+  
+  while (true) {
+    console.log(`\n--- ROUND ${round} ---`);
+    const context = current.length > MAX_CONTEXT ? current.slice(0, MAX_CONTEXT) + '\n/* truncated */' : current;
+    
+    const answer = await askAI(`Round ${round}. Edit ${file} according to: ${instruction}\n\nCurrent file:\n\`\`\`\n${context}\n\`\`\``);
+    const candidate = extractCode(answer);
+    
+    if (!candidate) {
+      console.log('No code block found in response. Raw output:');
+      console.log(answer);
+      const cont = await ask('\nContinue? (y/n/refine): ');
+      if (cont.toLowerCase() !== 'y' && !cont.toLowerCase().startsWith('r')) break;
+      if (cont.toLowerCase().startsWith('r')) {
+        const refinement = await ask('Refinement instruction: ');
+        continue;
+      }
+      continue;
+    }
+    
+    console.log(`\nProposed change:\n${lineDiff(current, candidate)}\n`);
+    const action = await ask('Action? (apply / refine / skip / abort): ');
+    
+    if (action === 'apply') {
+      writeFile(file, candidate);
+      current = candidate;
+      console.log(`✓ Applied round ${round}`);
+      
+      const next = await ask('Another round? (y/n): ');
+      if (next.toLowerCase() !== 'y') break;
+      round++;
+    } else if (action.startsWith('refine')) {
+      const refinement = await ask('Refinement: ');
+      round++;
+    } else if (action === 'abort') {
+      console.log('Aborted. File unchanged from last apply.');
+      break;
+    } else {
+      round++;
+    }
+  }
+  
+  rl.close();
+  console.log(`\n🏁 Done. ${round} rounds. File: ${file}`);
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   if (!command || command === 'help') return help();
@@ -1220,6 +1427,8 @@ async function main() {
     writeFile(file, content.join(' ')); return console.log(`✓ Wrote ${file}`);
   }
   if (command === 'edit') return editFile(args);
+  if (command === 'edit-scope') return scopedEdit(args);
+  if (command === 'edit-loop') return iterativeEdit(args);
   if (command === 'github') return github(args);
   if (command === 'prompt') return promptCommand(args);
 
@@ -1258,7 +1467,7 @@ async function main() {
 
   // ===== STATUS =====
   if (command === 'status') {
-    return require('child_process').execSync('node status.js', { cwd: __dirname, stdio: 'inherit' });
+    return statusCommand(args);
   }
 
   // ===== BURN RATE =====

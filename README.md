@@ -85,6 +85,17 @@ athelgard config
 
 ---
 
+## 🖥️ INSTALL ON WINDOWS (PowerShell)
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/NyxSpecter4/athelgard-cli/master/install.ps1 | iex
+athelgard config
+```
+
+Requires: [Git](https://git-scm.com/download/win) and [Node.js](https://nodejs.org)
+
+---
+
 ## 🖥️ INSTALL ON WINDOWS (WSL)
 
 ```bash
