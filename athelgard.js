@@ -1186,6 +1186,13 @@ function help() {
 🩹 DEVOPS:
   athelgard heal                     - Auto-heal infrastructure issues
 
+🐉 ATHELGARD EVE — Autonomous Agent:
+  athelgard eve start                - Start autonomous agent daemon
+  athelgard eve stop                 - Stop agent daemon
+  athelgard eve status               - Check agent state
+  athelgard eve task "description"   - Assign a task to the agent
+  athelgard eve memory               - View agent memory
+
 🎯 ORCHESTRATOR:
   athelgard delegate "<task>"        - Auto-route task to right agent
 
@@ -1267,6 +1274,11 @@ async function main() {
   // ===== AUTO-HEAL =====
   if (command === 'heal') {
     return require('child_process').execSync('node auto-heal.js', { cwd: __dirname, stdio: 'inherit' });
+  }
+
+  // ===== EVE AGENT =====
+  if (command === 'eve') {
+    return require('child_process').execSync('node eve.js ' + args.join(' '), { cwd: __dirname, stdio: 'inherit' });
   }
 
   // ===== AGENT ORCHESTRATOR =====

@@ -13,9 +13,9 @@ const C = process.stdout.isTTY ? {
 const AGENTS = {
   cursor: {
     name: 'Cursor',
-    role: 'builder',
+    role: 'builder-2',
     skills: ['code', 'implement', 'build', 'create', 'write'],
-    cost: '$99/mo',
+    cost: '$20/mo',
     availability: '24/7',
     chair: 3
   },
@@ -44,11 +44,11 @@ const AGENTS = {
     chair: 7
   },
   sgrok: {
-    name: 'SGROK',
-    role: 'tester',
-    skills: ['test', 'research', 'benchmark', 'analyze', 'investigate'],
-    cost: '$0 (on-call)',
-    availability: 'On-demand',
+    name: 'SGROK (Nyx-Grok)',
+    role: 'builder',
+    skills: ['build', 'test', 'research', 'benchmark', 'analyze', 'investigate'],
+    cost: '$20/mo',
+    availability: '24/7',
     chair: 10
   },
   hermes: {
