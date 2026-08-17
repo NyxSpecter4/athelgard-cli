@@ -285,7 +285,8 @@ Be concise. Only use tools when necessary.` },
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json'
-        }
+        },
+        timeout: 15000 // 15 second timeout
       }, (res) => {
         let responseData = '';
         res.on('data', chunk => responseData += chunk);
@@ -304,6 +305,11 @@ Be concise. Only use tools when necessary.` },
             resolve({ thought: responseData, actions: [], response: responseData });
           }
         });
+      });
+
+      req.on('timeout', () => {
+        req.destroy();
+        resolve({ error: 'DeepSeek API timeout (15s). Check network or API key.' });
       });
 
       req.on('error', (e) => resolve({ error: e.message }));
