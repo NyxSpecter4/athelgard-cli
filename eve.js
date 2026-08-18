@@ -228,9 +228,30 @@ class ToolRegistry {
       return { success: false, error: `Unknown tool: ${toolName}` };
     }
     console.log(`  🔧 Tool: ${toolName}(${args.map(a => JSON.stringify(a).slice(0, 50)).join(', ')})`);
-    const result = await tool(...args);
-    console.log(`  ✅ Result: ${result.success ? 'OK' : 'FAIL'}${result.error ? ` — ${result.error.slice(0, 100)}` : ''}`);
-    return result;
+    
+    // Retry logic: 3 attempts with exponential backoff
+    let lastError = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const result = await tool(...args);
+        if (result.success) {
+          console.log(`  ✅ Result: OK`);
+          return result;
+        }
+        lastError = result.error;
+        console.log(`  ⚠️  Attempt ${attempt}/3 failed: ${result.error?.slice(0, 100)}`);
+      } catch (e) {
+        lastError = e.message;
+        console.log(`  ⚠️  Attempt ${attempt}/3 crashed: ${e.message.slice(0, 100)}`);
+      }
+      if (attempt < 3) {
+        const delay = Math.pow(2, attempt) * 500;
+        console.log(`  ⏳ Retrying in ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+    console.log(`  ❌ Result: FAIL — ${lastError?.slice(0, 100)}`);
+    return { success: false, error: `All retries failed: ${lastError}` };
   }
 
   list() {
@@ -247,74 +268,80 @@ class Brain {
     this.config = config;
   }
 
-  async think(prompt, context = []) {
-    const apiKey = this.config.deepseek_api_key;
-    if (!apiKey) {
-      return { error: 'No DeepSeek API key configured' };
+  // Peak Protection: Check if DeepSeek is in peak pricing
+  isPeakHour() {
+    const bjHour = Number(new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric', hour12: false, timeZone: 'Asia/Shanghai'
+    }).format(new Date()));
+    return (bjHour >= 9 && bjHour < 12) || (bjHour >= 14 && bjHour < 18);
+  }
+
+  getProvider() {
+    const isPeak = this.isPeakHour();
+    if (isPeak && this.config.kimiKey) {
+      return { name: 'kimi', host: 'api.moonshot.cn', path: '/v1/chat/completions', key: this.config.kimiKey, model: 'kimi-k2.5', peakProtected: true };
     }
+    if (this.config.deepseekKey) {
+      return { name: 'deepseek', host: 'api.deepseek.com', path: '/chat/completions', key: this.config.deepseekKey, model: 'deepseek-chat', peakProtected: false };
+    }
+    if (this.config.kimiKey) {
+      return { name: 'kimi', host: 'api.moonshot.cn', path: '/v1/chat/completions', key: this.config.kimiKey, model: 'kimi-k2.5', peakProtected: false };
+    }
+    return null;
+  }
 
-    const messages = [
-      { role: 'system', content: `You are Athelgard, an autonomous coding agent. You have access to tools: readFile, writeFile, listFiles, gitStatus, gitCommit, githubListRepos, exec, searchCode, remember, recall.
+  extractPlan(content) {
+    try { const parsed = JSON.parse(content); if (parsed.thought || parsed.actions) return parsed; } catch {}
+    const block = content.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
+    if (block) { try { const p = JSON.parse(block[1].trim()); if (p.thought || p.actions) return p; } catch {} }
+    const json = content.match(/\{[\s\S]*?"thought"[\s\S]*?\}/);
+    if (json) { try { return JSON.parse(json[0]); } catch {} }
+    return { thought: content.slice(0, 200), actions: [], response: content };
+  }
 
-When given a task, decide which tools to use and return a JSON plan:
-{
-  "thought": "your reasoning",
-  "actions": [
-    { "tool": "toolName", "args": ["arg1", "arg2"] }
-  ],
-  "response": "what to tell the user"
-}
+  async think(prompt, context = [], options = {}) {
+    const provider = this.getProvider();
+    if (!provider) return { error: 'No AI API key configured. Run: athelgard config' };
 
-Be concise. Only use tools when necessary.` },
-      ...context.map(c => ({ role: c.role, content: c.content })),
-      { role: 'user', content: prompt }
-    ];
+    const system = options.systemOverride || `You are Athelgard EVE, an autonomous coding agent with tools: readFile, writeFile, listFiles, gitStatus, gitCommit, githubListRepos, exec, searchCode, remember, recall. Return JSON plan: {"thought":"...","actions":[{"tool":"...","args":["..."]}],"response":"..."}`;
+    const messages = [{ role: 'system', content: system }, ...context.slice(-10).map(c => ({ role: c.role, content: c.content })), { role: 'user', content: prompt }];
 
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const result = await this.callAPI(provider, messages, options);
+        if (result.error) throw new Error(result.error);
+        return result;
+      } catch (e) {
+        console.log(`  ⚠️  Attempt ${attempt}/3 failed: ${e.message.slice(0, 100)}`);
+        if (provider.name === 'deepseek' && this.config.kimiKey && attempt === 2) {
+          console.log('  🔄 Emergency fallback to Kimi...');
+          const kimi = { name: 'kimi', host: 'api.moonshot.cn', path: '/v1/chat/completions', key: this.config.kimiKey, model: 'kimi-k2.5' };
+          try { const fb = await this.callAPI(kimi, messages, options); if (!fb.error) return fb; } catch (fe) { console.log(`  ⚠️  Fallback failed: ${fe.message.slice(0, 100)}`); }
+        }
+        if (attempt < 3) { const delay = attempt * 1000; console.log(`  ⏳ Retrying in ${delay}ms...`); await new Promise(r => setTimeout(r, delay)); }
+      }
+    }
+    return { error: `All retries failed` };
+  }
+
+  async callAPI(provider, messages, options = {}) {
     return new Promise((resolve) => {
-      const data = JSON.stringify({
-        model: 'deepseek-chat',
-        messages,
-        temperature: 0.3,
-        max_tokens: 2000
-      });
-
-      const req = https.request({
-        hostname: 'api.deepseek.com',
-        path: '/chat/completions',
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 15000 // 15 second timeout
-      }, (res) => {
-        let responseData = '';
-        res.on('data', chunk => responseData += chunk);
+      const body = JSON.stringify({ model: provider.model, messages, temperature: options.temperature ?? 0.3, max_tokens: options.maxTokens ?? 2000 });
+      const req = https.request({ hostname: provider.host, path: provider.path, method: 'POST', headers: { 'Authorization': `Bearer ${provider.key}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }, timeout: 30000 }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
         res.on('end', () => {
           try {
-            const parsed = JSON.parse(responseData);
-            const content = parsed.choices?.[0]?.message?.content || '{}';
-            // Try to parse JSON plan
-            const jsonMatch = content.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-              resolve(JSON.parse(jsonMatch[0]));
-            } else {
-              resolve({ thought: content, actions: [], response: content });
-            }
-          } catch {
-            resolve({ thought: responseData, actions: [], response: responseData });
-          }
+            const parsed = JSON.parse(data);
+            if (parsed.error) { resolve({ error: `${provider.name}: ${parsed.error.message || parsed.error}` }); return; }
+            const plan = this.extractPlan(parsed.choices?.[0]?.message?.content || '');
+            resolve({ ...plan, _meta: { provider: provider.name, model: provider.model, peakProtected: provider.peakProtected, tokens: parsed.usage?.total_tokens || 0 } });
+          } catch (e) { resolve({ error: `Parse error: ${e.message}` }); }
         });
       });
-
-      req.on('timeout', () => {
-        req.destroy();
-        resolve({ error: 'DeepSeek API timeout (15s). Check network or API key.' });
-      });
-
-      req.on('error', (e) => resolve({ error: e.message }));
-      req.write(data);
-      req.end();
+      req.on('timeout', () => { req.destroy(); resolve({ error: `${provider.name} timeout` }); });
+      req.on('error', (e) => resolve({ error: `${provider.name}: ${e.message}` }));
+      req.write(body); req.end();
     });
   }
 }
@@ -451,14 +478,12 @@ class EveAgent {
   }
 
   async tick() {
-    // Check for pending tasks
     const pending = this.tasks.getPending();
     
-    for (const task of pending.slice(0, 1)) { // Process one at a time
+    for (const task of pending.slice(0, 1)) {
       console.log(`\n📋 Processing task: ${task.description}`);
       
       try {
-        // Think about the task
         const plan = await this.brain.think(task.description, this.memory.getRecentContext(5));
         
         if (plan.error) {
@@ -468,8 +493,8 @@ class EveAgent {
         }
 
         console.log(`  💭 Thought: ${plan.thought?.slice(0, 100)}...`);
+        if (plan._meta?.peakProtected) console.log(`  🛡️  Peak Protection: Using ${plan._meta.provider} (DeepSeek peak avoided)`);
         
-        // Execute actions
         if (plan.actions && plan.actions.length > 0) {
           for (const action of plan.actions) {
             const result = await this.tools.execute(action.tool, ...action.args);
@@ -482,9 +507,8 @@ class EveAgent {
           }
         }
 
-        // Complete task
         this.tasks.complete(task.id, plan.response || 'Task completed');
-        this.memory.addConversation('assistant', plan.response || 'Done', { task: task.id });
+        this.memory.addConversation('assistant', plan.response || 'Done', { task: task.id, provider: plan._meta?.provider });
         
         console.log(`  ✅ Task completed: ${task.id}`);
         
@@ -540,10 +564,31 @@ class EveAgent {
     }
   }
 
-  status() {
+  status(jsonMode = false) {
     const pending = this.tasks.getPending().length;
     const completed = this.tasks.tasks.filter(t => t.status === 'completed').length;
     const failed = this.tasks.tasks.filter(t => t.status === 'failed').length;
+    const recentTasks = this.tasks.tasks.slice(-10);
+    
+    if (jsonMode) {
+      console.log(JSON.stringify({
+        running: this.running,
+        pid: fs.existsSync(PID_FILE) ? fs.readFileSync(PID_FILE, 'utf8').trim() : null,
+        memory: {
+          conversations: this.memory.data.conversations.length,
+          facts: Object.keys(this.memory.data.facts).length,
+          files: Object.keys(this.memory.data.files).length
+        },
+        tasks: { pending, completed, failed, total: this.tasks.tasks.length, recent: recentTasks },
+        tools: this.tools.list(),
+        config: {
+          hasDeepSeek: !!this.config.deepseekKey,
+          hasKimi: !!this.config.kimiKey,
+          hasGitHub: !!this.config.githubToken
+        }
+      }, null, 2));
+      return;
+    }
     
     console.log('');
     console.log('🐉 ATHELGARD EVE STATUS');
@@ -610,7 +655,7 @@ switch (command) {
     break;
     
   case 'status':
-    eve.status();
+    eve.status(args.includes('--json'));
     break;
     
   case 'task':
@@ -629,6 +674,7 @@ switch (command) {
     console.log('  athelgard eve start          — Start agent daemon');
     console.log('  athelgard eve stop           — Stop agent daemon');
     console.log('  athelgard eve status         — Check agent state');
+    console.log('  athelgard eve status --json  — JSON output');
     console.log('  athelgard eve task "..."     — Assign a task');
     console.log('  athelgard eve memory         — View agent memory');
     console.log('');
