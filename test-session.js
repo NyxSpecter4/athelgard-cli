@@ -5,9 +5,13 @@ const assert = require('assert');
 const ContinuationLoop = require('./continuation.js');
 
 function takePrompt(argv) {
-  const prompt = argv.slice(2).join(' ').trim();
+  const prompt = argv.slice(2).filter((arg) => arg !== '--apply').join(' ').trim();
   if (!prompt) throw new Error('A task prompt is required');
   return prompt;
+}
+
+function hasApplyFlag(argv) {
+  return argv.includes('--apply');
 }
 
 function generateDiff(prompt) {
@@ -42,26 +46,29 @@ class TestContinuationLoop extends ContinuationLoop {
   }
 }
 
-async function runSession(argv = ['node', 'test-session.js', 'update', 'demo']) {
+async function runSession(argv = ['node', 'test-session.js', 'update', 'demo', '--apply'], answer = '2') {
   const prompt = takePrompt(argv);
   const diff = generateDiff(prompt);
-  const result = applyDiff(diff, true);
-  const continuation = new TestContinuationLoop('2');
+  const result = applyDiff(diff, hasApplyFlag(argv));
+  const continuation = new TestContinuationLoop(answer);
   const nextStep = await continuation.promptNext(result);
 
   return { prompt, diff, result, continuation, nextStep };
 }
 
 async function main() {
-  const session = await runSession();
+  const selected = await runSession();
+  assert.strictEqual(selected.prompt, 'update demo');
+  assert.strictEqual(selected.diff.patch, '+ update demo');
+  assert.strictEqual(selected.result.applied, true);
+  assert.strictEqual(selected.continuation.handoff.choices.length, 3);
+  assert.strictEqual(selected.nextStep, selected.continuation.handoff.choices[1]);
 
-  assert.strictEqual(session.prompt, 'update demo');
-  assert.strictEqual(session.diff.patch, '+ update demo');
-  assert.strictEqual(session.result.applied, true);
-  assert.strictEqual(session.continuation.handoff.choices.length, 3);
-  assert.strictEqual(session.nextStep, session.continuation.handoff.choices[1]);
+  const custom = await runSession(['node', 'test-session.js', 'inspect', 'logs'], 'open logs');
+  assert.strictEqual(custom.result.applied, false);
+  assert.strictEqual(custom.nextStep, 'open logs');
 
-  console.log('Session flow verified: prompt -> diff -> apply -> 3-choice continuation.');
+  console.log('Session flow verified: prompt -> diff -> apply flag -> 3-choice/custom continuation.');
 }
 
 if (require.main === module) {
@@ -71,4 +78,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { runSession, takePrompt, generateDiff, applyDiff, TestContinuationLoop };
+module.exports = { runSession, takePrompt, hasApplyFlag, generateDiff, applyDiff, TestContinuationLoop };
